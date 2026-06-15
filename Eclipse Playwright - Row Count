@@ -1,0 +1,111 @@
+package Alert_Mgmt;
+
+import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.LoadState;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+
+public class ALL_Alert_Rowcount {
+
+	    @Test
+	    void loginToAssetMonitor() throws InterruptedException {
+
+	        try (Playwright playwright = Playwright.create()) {
+
+	            Browser browser = playwright.chromium().launch(
+	                    new BrowserType.LaunchOptions().setHeadless(false)
+	            );
+
+	            BrowserContext context = browser.newContext();
+	            Page page = context.newPage();
+
+	            // Navigate to site
+	            page.navigate("https://url.com/home");
+	            page.waitForLoadState(LoadState.DOMCONTENTLOADED);
+
+	            String username = System.getenv("USERNAME");
+	            String password = System.getenv("PASSWORD");
+
+	            if (username == null || password == null) {
+	                throw new RuntimeException("Set USERNAME and PASSWORD environment variables.");
+	            }
+
+	            // -------- Step 1: Enter Email --------
+	            page.waitForSelector("input[name='loginfmt']");
+	            page.fill("input[name='loginfmt']", username);
+	            page.click("input[type='submit']");
+
+	            // -------- Step 2: Enter Password --------
+	            page.waitForSelector("input[name='passwd']");
+	            page.fill("input[name='passwd']", password);
+	            page.click("input[type='submit']");
+
+	            // -------- Wait 30 seconds for MFA approval --------
+	            System.out.println("Waiting 30 seconds for MFA approval...");
+	            page.waitForTimeout(15000); // 30,000 ms = 30 seconds
+
+	            // Wait until redirected back to application
+	            page.waitForLoadState(LoadState.NETWORKIDLE);
+
+	            System.out.println("Login flow completed.");
+	            
+	            // Click M-Desk
+	            page.click("text=View Alerts");
+	            page.waitForTimeout(1000);
+
+	            System.out.println("Navigated to: " + page.url());
+
+            // Locators
+            Locator activePage = page.locator(".e-numericitem.e-currentitem");
+            Locator nextButton = page.locator(".e-pagercontainer .e-next");
+            Locator tableRows = page.locator("table tbody tr");
+
+            // ---- Baseline from Page 1 ----
+            int maxAllowedRows = tableRows.count() - 1; // subtract header
+            System.out.println("Baseline (max allowed rows) from Page 1 (excluding header): " + maxAllowedRows);
+
+            // Variable to store total rows across all pages
+            int totalRowCount = 0;
+
+            while (true) {
+
+                int currentPage = Integer.parseInt(activePage.innerText().trim());
+                System.out.println("\n📄 Currently on Page: " + currentPage);
+
+                int rowCount = tableRows.count() - 1; // subtract header on each page
+                System.out.println("🔢 Row count on Page " + currentPage + " (excluding header) = " + rowCount);
+
+                // Add to running total
+                totalRowCount += rowCount;
+
+                // Flexible assertions
+                Assertions.assertTrue(rowCount > 0,
+                        "No rows found on Page " + currentPage);
+
+                Assertions.assertTrue(rowCount <= maxAllowedRows,
+                        "Too many rows on Page " + currentPage +
+                                ". Expected ≤ " + maxAllowedRows + " but found " + rowCount);
+
+                // Stop at last page
+                if (currentPage == 14) {
+                    System.out.println("\n✅ Reached last page.");
+                    System.out.println("📊 TOTAL ROWS ACROSS ALL PAGES = " + totalRowCount);
+                    break;
+                }
+
+                // Click Next
+                nextButton.click();
+
+                // Wait until page number changes
+                page.waitForFunction(
+                        "oldPage => document.querySelector('.e-currentitem').innerText.trim() !== oldPage",
+                        String.valueOf(currentPage)
+                );
+
+                page.waitForTimeout(1000);
+            }
+
+            browser.close();
+        }
+    }
+}
